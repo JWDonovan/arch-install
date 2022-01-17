@@ -1,0 +1,78 @@
+# Arch Linux Install
+
+## Base Install
+ls /sys/firmware/efi/efivars
+ping 1.1.1.1
+timedatectl set-ntp true
+fdisk -l
+cfdisk -z /dev/sda
+  # gpt
+  # new
+  # 256M
+  # type = EFI System
+  # new
+  # whole disk
+  # type = Linux filesytem
+  # write
+  # quit
+mkfs.fat -F 32 -n EFI /dev/sda1
+cryptsetup luksFormat /dev/sda2
+  # YES
+  # password
+  # password
+cryptsetup open --type luks /dev/sda2 $HOSTNAME
+  # password
+mkfs.ext4 -L ROOT /dev/mapper/$HOSTNAME
+mount /dev/mapper/$HOSTNAME /mnt
+mkdir /mnt/boot
+mount /dev/sda1 /mnt/boot
+reflector --country US --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+pacstrap /mnt base linux linux-firmware neovim dhcpcd zsh sudo amd-ucode/intel-ucode fakeroot git wget xorg-server xorg-xinit xorg-xsetroot xorg-xinput xf86-video-intel ttf-dejavu ttf-fira-code firefox-developer-edition make pkgconf gcc patch alsa-utils python liinux-headers broadcom-wl-dkms iwd
+genfstab -U /mnt > /mnt/etc/fstab
+arch-chroot /mnt
+
+## Post Install
+ln -sf /usr/share/zoneinfo/US/Eastern /etc/localtime
+hwclock --systohc
+echo "en_US.UTF-8 UTF-8" > /etc/locale.gen
+locale-gen
+echo LANG=en_US.UTF-8 > /etc/locale.conf
+echo $HOSTNAME > /etc/hostname
+echo "127.0.1.1  $HOSTNAME.localdomain  mbp" > /etc/hosts
+systemctl enable dhcpcd iwd
+passwd
+  # password
+  # password
+groupadd sudo
+useradd -m -G sudo -s /usr/bin/zsh $USERNAME
+passwd $USERNAME
+  # password
+  # password
+EDITOR=nvim visudo
+nvim /etc/mkinitcpio.conf
+  # HOOKS=(base udev autodetect modconf block keyboard encrypt filesystems)
+mkinitcpio -P
+cp /usr/lib/systemd/system/systemd-fsck* /etc/systemd/system/
+nvim /etc/systemd/system/systemd-fsck-root.service
+  # StandardOutput=null
+  # StandardError=journal+console
+nvim /etc/systemd/system/systemd-fsck@.service
+  # StandardOutput=null
+  # StandardError=journal+console
+touch /home/$USERNAME/.hushlogin
+chown $USERNAME:$USERNAME /home/$USERNAME/.hushlogin
+bootctl --path=/boot install
+nvim /boot/loader/loader.conf
+  # default arch
+  # editor 0
+nvim /boot/loader/entries/arch.conf
+  # title Arch Linux
+  # linux /vmlinuz-linux
+  # initrd /{amd/intel}-ucode.img
+  # initrd /initramfs-linux.img
+  # options cryptdevice=UUID=?:$HOSTNAME root=/dev/mapper/$HOSTNAME quiet loglevel=3 vga=current udev.log-priority=3 rw vt.global_cursor_default=0 acpi_backlight=none
+  # read !lsblk --noheadings --nodeps --list -o UUID /dev/sda2
+echo "" > /etc/issue
+exit
+umount -R /mnt
+reboot
